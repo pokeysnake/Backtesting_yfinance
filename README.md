@@ -31,10 +31,20 @@ The final goal is to transform this notebook into a **Streamlit-powered web app*
 
 Plots include:
 - Close price with SMA/EMA lines or RSI levels
+  - SMA
+     <img width="1389" height="590" alt="image" src="https://github.com/user-attachments/assets/07480f8d-067e-4316-b75c-9118adeb939f" />
+  - RSI
+    <img width="1386" height="590" alt="image" src="https://github.com/user-attachments/assets/4398ae2c-94da-4474-a680-c465ae50b53f" />
+  - EMA
+    - to be implemented 
 - Buy/sell signal markers
   - Green ↑ triangle = long entry
   - Red ↓ triangle = short entry
 - Cumulative return graph for strategy vs. benchmark (Buy & Hold)
+
+    <img width="1390" height="590" alt="image" src="https://github.com/user-attachments/assets/119750a3-0ceb-4f41-b72b-7f1308fccf7e" />
+    <img width="1386" height="590" alt="image" src="https://github.com/user-attachments/assets/72409dc3-ad10-44b3-964a-898aa429ddbf" />
+
 
 ---
 
