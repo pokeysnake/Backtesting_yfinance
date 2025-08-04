@@ -16,15 +16,44 @@ def successful(message, location = 'main'):
     msg_placeholder.empty()
 
 def display_config():
+    config_lines = []
+
     if sma:
-        st.markdown(f"### **SMA Strategy Levels:**  \nShort = {sma_short_window}  \nLong = {sma_long_window}")
+        config_lines.append(f"- SMA Strategy: {sma_short_window} / {sma_long_window}")
     if rsi:
-        st.markdown(f"### **RSI Thresholds:**  \nOverbought = {rsi_overbought}  \nOversold: {rsi_oversold}")
+        config_lines.append(f"- RSI Strategy: Overbought {rsi_overbought}, Oversold {rsi_oversold}")
     if ema:
-        st.markdown(f"### **EMA Strategy Levels:**  \nShort = {ema_short_window}  \nLong = {ema_long_window}")
+        config_lines.append(f"- EMA Strategy: {ema_short_window} / {ema_long_window}")
+
+    return "\n".join(config_lines)
+
+
+
+def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=None):
+    output = []
+
+    successful("Running backtest with current configuration")
+    #output.append("---")
+    output.append(f"## Ticker selected: {ticker}")
+    #output.append("---")
+    output.append("### Configuration used:")
+    output.append(f"**Take Profit Level:** {take_profit}%")
+    output.append(f"**Stop Loss Level:** {stop_loss}%")
+    
+
+    if sma_cfg:
+        output.append(f"**SMA Strategy:** Short = {sma_cfg[0]}, Long = {sma_cfg[1]}")
+    if rsi_cfg:
+        output.append(f"**RSI Strategy:** Overbought = {rsi_cfg[0]}, Oversold = {rsi_cfg[1]}")
+    if ema_cfg:
+        output.append(f"**EMA Strategy:** Short = {ema_cfg[0]},  Long = {ema_cfg[1]}")
+
+    return output
+
+
+
 
 #GLOBAL VARIABLES
-
 #TICKER INPUT
 TICKER_MAP = {
     "sp500": "SPY",
@@ -122,20 +151,6 @@ with tabs[0]:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # *** BACKTESTING TAB ***
 with tabs[1]:
     #st.divider()
@@ -143,7 +158,9 @@ with tabs[1]:
 
     #BACKTESTING BUTTON
     with st.sidebar.container():
-        run_backtest = st.button("Run Tests")
+        if st.button("Run Tests"):
+            st.session_state["run_test_triggered"] = True
+
 
     # ticker resolution
     user_input = st.sidebar.text_input("Enter ticker or common index name (e.g., AAPL, sp500, gold):").strip().lower()
@@ -162,6 +179,7 @@ with tabs[1]:
         except:
             st.sidebar.error("⚠️ Could not fetch data. Please check the ticker.")
             resolved_ticker = None  # prevent running backtest
+
 
     #TP/SL INPUTS
     st.sidebar.write("Select Desired Take Profit and Stop Loss Levels (%): ")
@@ -193,14 +211,30 @@ with tabs[1]:
         ema_long_window = st.sidebar.number_input("Long Moving Average: Recommended 2 - 2.5x of short window", min_value = ema_short_window + 1, max_value=100, value = 30, step = 1)
 
     #LINKS TO BACKTESTING BUTTON --> RUNS CONFIGS USER HAS
-    if run_backtest:
-        successful("Running backtest with current configuration")
-        st.markdown(f"## Ticker selected: {user_input.upper()}")
-        st.divider()
-        st.markdown(f"## Configuration used: ")
-        display_config()
-        st.markdown(f"### TP Level: {take_profit}%  \n### Stop Loss Level: {stop_loss}%")
-        st.divider()
+    # RUN TESTS IF TRIGGERED
+    if st.session_state.get("run_test_triggered"):
+        if not resolved_ticker or not any([sma, rsi, ema]):
+            st.error("Please enter a valid ticker and select at least one strategy.")
+        else:
+            sma_cfg = (sma_short_window, sma_long_window) if sma else None
+            rsi_cfg = (rsi_overbought, rsi_oversold) if rsi else None
+            ema_cfg = (ema_short_window, ema_long_window) if ema else None
+
+            st.session_state["backtest_output"] = runTest(
+                resolved_ticker,
+                take_profit,
+                stop_loss,
+                sma_cfg,
+                rsi_cfg,
+                ema_cfg
+            )
+        
+        st.session_state["run_test_triggered"] = False
+
+    if "backtest_output" in st.session_state:
+        for line in st.session_state["backtest_output"]:
+            st.markdown(line)
+
 
 
 
