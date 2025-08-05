@@ -1,7 +1,11 @@
+import datetime
 import streamlit as st
 import time
 import yfinance as yf
 import pandas as pd
+from strategies.apply_sma_strategy import apply_sma_strategy
+
+
 
 #HELPER METHODS
 #POPUP MESSAGE FUNCTIONS
@@ -32,6 +36,9 @@ def display_config():
 def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=None):
     output = []
 
+    start_date = datetime.today() - datetime.timedelta(days=365 * 2)
+    end_date = datetime.today()
+
     successful("Running backtest with current configuration")
     #output.append("---")
     output.append(f"## Ticker selected: {ticker}")
@@ -39,14 +46,21 @@ def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=
     output.append("### Configuration used:")
     output.append(f"**Take Profit Level:** {take_profit}%")
     output.append(f"**Stop Loss Level:** {stop_loss}%")
-    
-
     if sma_cfg:
         output.append(f"**SMA Strategy:** Short = {sma_cfg[0]}, Long = {sma_cfg[1]}")
     if rsi_cfg:
         output.append(f"**RSI Strategy:** Overbought = {rsi_cfg[0]}, Oversold = {rsi_cfg[1]}")
     if ema_cfg:
         output.append(f"**EMA Strategy:** Short = {ema_cfg[0]},  Long = {ema_cfg[1]}")
+    
+    st.divider()
+    output.append(f"Strategy Results: ")
+    
+    if sma_cfg:
+        short_w, long_w = sma_cfg
+        df = apply_sma_strategy(ticker, start_date, end_date, short_w, long_w, take_profit/100, stop_loss/100)
+        final_return = df['Cumulative Strategy Return'].iloc[-1]
+        output.append(f"**SMA Strategy Final Return:** {round((final_return - 1) * 100, 2)}%")
 
     return output
 
