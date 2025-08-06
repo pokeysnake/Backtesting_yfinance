@@ -1,9 +1,19 @@
-import datetime
+import sys
+import os
+from datetime import datetime, timedelta
 import streamlit as st
 import time
 import yfinance as yf
 import pandas as pd
-from strategies.apply_sma_strategy import apply_sma_strategy
+import matplotlib.pyplot as plt
+import streamlit as st
+# Append the project root directory to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+print("PYTHON PATH:", sys.path)
+from strategies.apply_sma_strategy import sma_strategy
+from strategies.apply_ema_strategy import ema_strategy
+
+
 
 
 
@@ -36,33 +46,57 @@ def display_config():
 def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=None):
     output = []
 
-    start_date = datetime.today() - datetime.timedelta(days=365 * 2)
+    start_date = datetime.today() - timedelta(days=365 * 5)
     end_date = datetime.today()
 
     successful("Running backtest with current configuration")
-    #output.append("---")
+
     output.append(f"## Ticker selected: {ticker}")
-    #output.append("---")
     output.append("### Configuration used:")
     output.append(f"**Take Profit Level:** {take_profit}%")
     output.append(f"**Stop Loss Level:** {stop_loss}%")
-    if sma_cfg:
-        output.append(f"**SMA Strategy:** Short = {sma_cfg[0]}, Long = {sma_cfg[1]}")
-    if rsi_cfg:
-        output.append(f"**RSI Strategy:** Overbought = {rsi_cfg[0]}, Oversold = {rsi_cfg[1]}")
-    if ema_cfg:
-        output.append(f"**EMA Strategy:** Short = {ema_cfg[0]},  Long = {ema_cfg[1]}")
-    
-    st.divider()
-    output.append(f"Strategy Results: ")
-    
+    output.append("### **Strategy Results:**")
+
     if sma_cfg:
         short_w, long_w = sma_cfg
-        df = apply_sma_strategy(ticker, start_date, end_date, short_w, long_w, take_profit/100, stop_loss/100)
+        df = sma_strategy(ticker, start_date, end_date, short_w, long_w, take_profit/100, stop_loss/100)
+        final_strategy_return = df['Cumulative Strategy Return'].iloc[-1]
+        final_market_return = df['Cumulative Market Return'].iloc[-1]
+
+        # Multiply by 100 to reflect growth including initial capital (e.g. 2.35 --> 235%)
+        output.append(f"📈 **SMA Strategy Final Return:** {round(final_strategy_return * 100, 2)}%")
+        output.append(f"🪙 **Buy and Hold Return:** {round(final_market_return * 100, 2)}%")
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        df['Cumulative Market Return'].plot(ax=ax, label="Buy and Hold", linestyle="--", color="gray")
+        df['Cumulative Strategy Return'].plot(ax=ax, label="SMA Strategy", color="purple")
+        ax.set_title("Strategy vs Market")
+        ax.set_ylabel("Growth ($1 = 100%)")
+        ax.set_xlabel("Date")
+        ax.grid(True)
+        ax.legend()
+        st.pyplot(fig)
+
+    if ema_cfg:
+        short_e, long_e = ema_cfg
+        df = ema_strategy(ticker, start_date, end_date, short_e, long_e, take_profit/100, stop_loss/100)
         final_return = df['Cumulative Strategy Return'].iloc[-1]
-        output.append(f"**SMA Strategy Final Return:** {round((final_return - 1) * 100, 2)}%")
+        output.append(f"📈 **EMA Strategy Final Return:** {round(final_return * 100, 2)}%")
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        df['Cumulative Market Return'].plot(ax=ax, label="Buy and Hold", linestyle="--", color="gray")
+        df['Cumulative Strategy Return'].plot(ax=ax, label="EMA Strategy", color="green")
+        ax.set_title("EMA Strategy vs Market")
+        ax.set_ylabel("Growth ($1 = 100%)")
+        ax.set_xlabel("Date")
+        ax.grid(True)
+        ax.legend()
+        st.pyplot(fig)
+
+    # Optional: Add similar section for RSI when implemented
 
     return output
+
 
 
 
@@ -127,18 +161,19 @@ with tabs[0]:
 
     st.markdown("## RSI Strategy")
     st.markdown("""
-    The Relative Strength Index (RSI) measures the speed and change of price movements on a scale from 0 to 100.
+    The **Relative Strength Index (RSI)** measures the speed and change of price movements on a scale from 0 to 100.
 
     - **Buy** when RSI crosses above the oversold level (e.g. 30).  
     - **Sell** when RSI crosses below the overbought level (e.g. 70).  
 
     ### Adjusting thresholds lets you tune between conservative and aggressive trading.
     """)
-    rsi_data =({
+
+    rsi_data ={
         "Use Case": ["Default", "Conservative", "Aggressive"],
-        "Overbought": [70, 80, 60],
-        "Oversold": [30, 20, 40]
-    })
+        "Overbought": ["70", "80", "60"],
+        "Oversold": ["30", "20", "40"]
+    }
     rsi_df = pd.DataFrame(rsi_data)
     st.dataframe(rsi_df, hide_index=True)
 
@@ -147,7 +182,7 @@ with tabs[0]:
 
     st.markdown("## EMA Strategy")
     st.markdown("""
-    The Exponential Moving Average (EMA) places more weight on recent prices than the SMA.
+    **The Exponential Moving Average (EMA)** places more weight on recent prices than the SMA.
 
     - **Buy** when the short EMA crosses above the long EMA.  
     - **Sell** when the short EMA crosses below the long EMA.
@@ -155,8 +190,8 @@ with tabs[0]:
     ### Lower-period EMAs react faster but can be noisier, while longer EMAs smooth out trends.
     """)
     ema_data =({
-        "Short EMA": [9, 12, 20, 50],
-        "Long EMA": [21, 26, 50, 200],
+        "Short EMA": ["9", "12", "20", "50"],
+        "Long EMA": ["21", "26", "50", "200"],
         "Style": ["Fast / Intraday", "Momentum", "Swing Trading", "Long-Term Trends"]
     })
     ema_df = pd.DataFrame(ema_data)
