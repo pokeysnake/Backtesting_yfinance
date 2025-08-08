@@ -1,59 +1,91 @@
-import yfinance as yf
+# strategies/apply_ema_strategy.py
 import pandas as pd
+import yfinance as yf
+from datetime import datetime
 
-def ema_strategy(ticker, start_date, end_date, short_window, long_window, take_profit_pct, stop_loss_pct):
-    # Step 1: Download data
-    df = yf.download(ticker, start=start_date, end=end_date)
-    df = df[['Close']].copy()
+def _download_prices(ticker: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    # Match notebook/SMA parity: no auto_adjust
+    df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
 
-    # Step 2: Calculate EMAs
-    df['EMA_Short'] = df['Close'].ewm(span=short_window, adjust=False).mean()
-    df['EMA_Long'] = df['Close'].ewm(span=long_window, adjust=False).mean()
+def _compute_ema(df: pd.DataFrame, short_window: int, long_window: int) -> pd.DataFrame:
+    df = df.copy()
+    # EMA via ewm; adjust=False = recursive (what most traders use)
+    df[f"EMA_{short_window}"] = df["Close"].ewm(span=short_window, adjust=False).mean()
+    df[f"EMA_{long_window}"] = df["Close"].ewm(span=long_window, adjust=False).mean()
+    # Warmup drop after both EMAs have meaningful values (optional but consistent)
+    df = df.dropna().copy()
+    return df
 
-    # Step 3: Generate crossover signals
-    df['Signal'] = 0
-    df.loc[df['EMA_Short'] > df['EMA_Long'], 'Signal'] = 1    # Long
-    df.loc[df['EMA_Short'] < df['EMA_Long'], 'Signal'] = -1   # Short
+def ema_strategy(
+    ticker: str,
+    start_date: datetime,
+    end_date: datetime,
+    short_window: int,
+    long_window: int,
+    take_profit: float,   # 0.20 -> 20%
+    stop_loss: float,     # 0.05 -> 5%
+) -> pd.DataFrame:
+    """
+    EMA crossover with TP/SL, aligned to SMA module’s behavior:
+      • Enter long when EMA_short > EMA_long (no crossing requirement)
+      • Exit when EMA_short < EMA_long OR TP/SL is hit (relative to entry close)
+      • Apply next-bar execution: Strategy Return = Market Return * signal.shift(1)
 
-    # Step 4: TP/SL execution logic
+    Returns a DataFrame with:
+      Close, EMA_{short}, EMA_{long}, TP_SL_Signal (0/1),
+      Market Return, Strategy Return,
+      Cumulative Market Return, Cumulative Strategy Return
+    """
+    df = _download_prices(ticker, start_date, end_date)
+    if df.empty:
+        return pd.DataFrame()
+
+    df = _compute_ema(df, short_window, long_window)
+
+    ema_s = df[f"EMA_{short_window}"]
+    ema_l = df[f"EMA_{long_window}"]
+    close = df["Close"]
+
     in_trade = False
-    trade_type = None
-    entry_price = 0
-    tp_sl_signal = []
+    entry_price = 0.0
+    pos = []
 
     for i in range(len(df)):
-        price = df['Close'].iloc[i]
-        signal = df['Signal'].iloc[i]
+        s = ema_s.iat[i]
+        l = ema_l.iat[i]
+        c = close.iat[i]
 
         if not in_trade:
-            if signal != 0:
+            # Enter whenever short > long (no explicit crossing)
+            if s > l:
                 in_trade = True
-                trade_type = 'long' if signal == 1 else 'short'
-                entry_price = price
-                tp_sl_signal.append(signal)
+                entry_price = float(c)
+                pos.append(1)
             else:
-                tp_sl_signal.append(0)
+                pos.append(0)
         else:
-            # calculate return based on direction
-            if trade_type == 'long':
-                current_return = (price - entry_price) / entry_price
-            else:
-                current_return = (entry_price - price) / entry_price
+            ret = (c - entry_price) / entry_price if entry_price else 0.0
+            exit_trend = s < l
+            hit_tp = (take_profit is not None and take_profit > 0 and ret >= take_profit)
+            hit_sl = (stop_loss   is not None and stop_loss   > 0 and ret <= -stop_loss)
 
-            ema_exit = (signal == 0)
-
-            if current_return >= take_profit_pct or current_return <= -stop_loss_pct or ema_exit:
+            if exit_trend or hit_tp or hit_sl:
                 in_trade = False
-                tp_sl_signal.append(0)
+                entry_price = 0.0
+                pos.append(0)
             else:
-                tp_sl_signal.append(1 if trade_type == 'long' else -1)
+                pos.append(1)
 
-    df['TP_SL_Signal'] = tp_sl_signal
+    df["TP_SL_Signal"] = pd.Series(pos, index=df.index, name="TP_SL_Signal")
 
-    # Step 5: Return calculations
-    df['Market Return'] = df['Close'].pct_change()
-    df['Strategy Return'] = df['Market Return'] * df['TP_SL_Signal'].shift(1)
-    df['Cumulative Market Return'] = (1 + df['Market Return']).cumprod()
-    df['Cumulative Strategy Return'] = (1 + df['Strategy Return']).cumprod()
+    # Returns (next-bar application)
+    df["Market Return"] = df["Close"].pct_change()
+    df["Strategy Return"] = df["Market Return"] * df["TP_SL_Signal"].shift(1).fillna(0)
+
+    df["Cumulative Market Return"] = (1 + df["Market Return"].fillna(0)).cumprod()
+    df["Cumulative Strategy Return"] = (1 + df["Strategy Return"]).cumprod()
 
     return df

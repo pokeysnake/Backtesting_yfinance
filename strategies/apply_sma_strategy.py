@@ -1,74 +1,94 @@
 import pandas as pd
 import yfinance as yf
+from datetime import datetime
 
-def sma_strategy(ticker, start_date, end_date, short_window, long_window, take_profit_pct, stop_loss_pct):
-    # Step 1: Download and prepare data
-    df = yf.download(ticker, start=start_date, end=end_date)
-    df = df[['Close']].copy()
+def _download_prices(ticker: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    # Match the notebook: do NOT auto_adjust; flatten columns if needed
+    df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
 
-    # Step 2: Calculate SMAs
-    df['SMA_Short'] = df['Close'].rolling(window=short_window).mean()
-    df['SMA_Long'] = df['Close'].rolling(window=long_window).mean()
+def _compute_sma(df: pd.DataFrame, short_window: int, long_window: int) -> pd.DataFrame:
+    df = df.copy()
+    df[f"SMA_{short_window}"] = df["Close"].rolling(window=short_window).mean()
+    df[f"SMA_{long_window}"] = df["Close"].rolling(window=long_window).mean()
+    # Match notebook behavior: drop early NaNs after both SMAs are available
+    df = df.dropna().copy()
+    return df
 
-    # Step 3: Generate signals
-    df['Signal'] = 0
-    df.loc[(df['SMA_Short'] > df['SMA_Long']), 'Signal'] = 1   # Long signal
-    df.loc[(df['SMA_Short'] < df['SMA_Long']), 'Signal'] = -1  # Short signal
+def sma_strategy(
+    ticker: str,
+    start_date: datetime,
+    end_date: datetime,
+    short_window: int,
+    long_window: int,
+    take_profit: float,   # e.g. 0.20 for 20%
+    stop_loss: float,     # e.g. 0.05 for 5%
+) -> pd.DataFrame:
+    """
+    Replicates the SMA strategy logic from the notebook:
+      • Enter long when SMA_short > SMA_long (no 'crossing' requirement)
+      • While in a trade, exit if:
+           - SMA_short < SMA_long  (trend exit), OR
+           - (Close - entry)/entry >= take_profit, OR
+           - (Close - entry)/entry <= -stop_loss
+      • Use next day returns: Strategy Return = Market Return * TP_SL_Signal.shift(1)
 
-    # Step 4: TP/SL logic
+    Returns columns:
+      Close, SMA_{short}, SMA_{long}, TP_SL_Signal (0/1),
+      Market Return, Strategy Return,
+      Cumulative Market Return, Cumulative Strategy Return
+    """
+    df = _download_prices(ticker, start_date, end_date)
+    if df.empty:
+        return pd.DataFrame()
+
+    df = _compute_sma(df, short_window, long_window)
+
+    # --- Position logic (mirror the notebook’s TP/SL + trend behavior) ---
     in_trade = False
-    entry_price = 0
-    position_type = None  # 'long' or 'short'
-    tp_sl_signal = []
+    entry_price = 0.0
+    pos = []  # 1 in-trade, 0 flat
+
+    sma_s = df[f"SMA_{short_window}"]
+    sma_l = df[f"SMA_{long_window}"]
+    close = df["Close"]
 
     for i in range(len(df)):
-        price = df['Close'].iloc[i]
-        signal = df['Signal'].iloc[i]
+        s = sma_s.iat[i]
+        l = sma_l.iat[i]
+        c = close.iat[i]
 
         if not in_trade:
-            if signal == 1:
+            # NOTE: enter whenever s > l (no crossing check)
+            if s > l:
                 in_trade = True
-                position_type = 'long'
-                entry_price = price
-                tp_sl_signal.append(1)
-            elif signal == -1:
-                in_trade = True
-                position_type = 'short'
-                entry_price = price
-                tp_sl_signal.append(-1)
+                entry_price = float(c)
+                pos.append(1)
             else:
-                tp_sl_signal.append(0)
+                pos.append(0)
         else:
-            if position_type == 'long':
-                current_return = (price - entry_price) / entry_price
-                sma_exit = signal == -1
-            else:
-                current_return = (entry_price - price) / entry_price
-                sma_exit = signal == 1
+            ret = (c - entry_price) / entry_price if entry_price else 0.0
+            exit_trend = s < l
+            hit_tp = (take_profit is not None and take_profit > 0 and ret >= take_profit)
+            hit_sl = (stop_loss   is not None and stop_loss   > 0 and ret <= -stop_loss)
 
-            if current_return >= take_profit_pct or current_return <= -stop_loss_pct or sma_exit:
+            if exit_trend or hit_tp or hit_sl:
                 in_trade = False
-                position_type = None
-                tp_sl_signal.append(0)
+                entry_price = 0.0
+                pos.append(0)
             else:
-                tp_sl_signal.append(1 if position_type == 'long' else -1)
+                pos.append(1)
 
-    df['TP_SL_Signal'] = tp_sl_signal
+    df["TP_SL_Signal"] = pd.Series(pos, index=df.index, name="TP_SL_Signal")
 
-    # Step 5: Calculate returns
-    df['Market Return'] = df['Close'].pct_change()
-    strat_returns = []
+    # --- Returns (match notebook math) ---
+    df["Market Return"] = df["Close"].pct_change()
+    df["Strategy Return"] = df["Market Return"] * df["TP_SL_Signal"].shift(1).fillna(0)
 
-    for i in range(len(df)):
-        if i == 0:
-            strat_returns.append(0)
-        else:
-            signal = df['TP_SL_Signal'].iloc[i-1]
-            ret = df['Market Return'].iloc[i]
-            strat_returns.append(ret if signal == 1 else (-ret if signal == -1 else 0))
-
-    df['Strategy Return'] = strat_returns
-    df['Cumulative Market Return'] = (1 + df['Market Return']).cumprod()
-    df['Cumulative Strategy Return'] = (1 + df['Strategy Return']).cumprod()
+    # Cumulative (growth index, starts at 1.0)
+    df["Cumulative Market Return"] = (1 + df["Market Return"].fillna(0)).cumprod()
+    df["Cumulative Strategy Return"] = (1 + df["Strategy Return"]).cumprod()
 
     return df
