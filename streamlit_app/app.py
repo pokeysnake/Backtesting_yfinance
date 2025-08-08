@@ -8,7 +8,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 # Append the current directory so we can import from strategies/
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))      # streamlit_app/strategies
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))  # repo_root/strategies
+
 import importlib
 import strategies.apply_sma_strategy as sma_module
 importlib.reload(sma_module)
