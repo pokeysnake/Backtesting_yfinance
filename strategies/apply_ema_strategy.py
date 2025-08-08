@@ -28,17 +28,7 @@ def ema_strategy(
     take_profit: float,   # 0.20 -> 20%
     stop_loss: float,     # 0.05 -> 5%
 ) -> pd.DataFrame:
-    """
-    EMA crossover with TP/SL, aligned to SMA module’s behavior:
-      • Enter long when EMA_short > EMA_long (no crossing requirement)
-      • Exit when EMA_short < EMA_long OR TP/SL is hit (relative to entry close)
-      • Apply next-bar execution: Strategy Return = Market Return * signal.shift(1)
 
-    Returns a DataFrame with:
-      Close, EMA_{short}, EMA_{long}, TP_SL_Signal (0/1),
-      Market Return, Strategy Return,
-      Cumulative Market Return, Cumulative Strategy Return
-    """
     df = _download_prices(ticker, start_date, end_date)
     if df.empty:
         return pd.DataFrame()

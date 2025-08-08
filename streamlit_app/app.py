@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import streamlit as st
 # Append the current directory so we can import from strategies/
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
 import importlib
 import strategies.apply_sma_strategy as sma_module
 importlib.reload(sma_module)
@@ -20,11 +19,6 @@ ema_strategy = ema_module.ema_strategy
 import strategies.apply_rsi_strategy as rsi_module
 importlib.reload(rsi_module)
 rsi_strategy = rsi_module.rsi_strategy
-
-
-
-
-
 
 
 
@@ -59,8 +53,6 @@ def combine_signals(signals: dict) -> pd.Series:
 def _fmt_equity(equity_index: float) -> str:
     """1.00 -> 100.00% (+0.00% gain), 2.00 -> 200.00% (+100.00% gain)"""
     return f"{equity_index*100:.2f}% ({(equity_index-1)*100:+.2f}% gain)"
-
-
 
 def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=None):
     output = []
@@ -172,9 +164,6 @@ def runTest(ticker, take_profit, stop_loss, sma_cfg=None, rsi_cfg=None, ema_cfg=
 
 
 
-
-
-
 #GLOBAL VARIABLES
 #TICKER INPUT
 TICKER_MAP = {
@@ -189,11 +178,6 @@ TICKER_MAP = {
     "gspc": "^GSPC",
     "ndx": "^NDX"
 }
-
-
-
-
-
 
 
 
@@ -319,8 +303,6 @@ with tabs[0]:
     })
     ema_df = pd.DataFrame(ema_data)
     st.dataframe(ema_df, hide_index=True)
-
-
 
 
 # *** BACKTESTING TAB ***

@@ -26,20 +26,7 @@ def sma_strategy(
     take_profit: float,   # e.g. 0.20 for 20%
     stop_loss: float,     # e.g. 0.05 for 5%
 ) -> pd.DataFrame:
-    """
-    Replicates the SMA strategy logic from the notebook:
-      • Enter long when SMA_short > SMA_long (no 'crossing' requirement)
-      • While in a trade, exit if:
-           - SMA_short < SMA_long  (trend exit), OR
-           - (Close - entry)/entry >= take_profit, OR
-           - (Close - entry)/entry <= -stop_loss
-      • Use next day returns: Strategy Return = Market Return * TP_SL_Signal.shift(1)
 
-    Returns columns:
-      Close, SMA_{short}, SMA_{long}, TP_SL_Signal (0/1),
-      Market Return, Strategy Return,
-      Cumulative Market Return, Cumulative Strategy Return
-    """
     df = _download_prices(ticker, start_date, end_date)
     if df.empty:
         return pd.DataFrame()

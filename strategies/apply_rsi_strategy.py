@@ -11,9 +11,6 @@ def _download_prices(ticker: str, start_date: datetime, end_date: datetime) -> p
     return df
 
 def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
-    """
-    Wilder's RSI (standard): uses exponential smoothing (adjust=False, alpha=1/period)
-    """
     delta = close.diff()
     gain = delta.clip(lower=0.0)
     loss = -delta.clip(upper=0.0)
@@ -37,22 +34,7 @@ def rsi_strategy(
     stop_loss: float,     # 0.05 for 5%
     period: int = 14,
 ) -> pd.DataFrame:
-    """
-    RSI swing strategy with TP/SL and next-bar execution, aligned with your app:
-
-    Entry:
-      • Go long when RSI crosses UP through the oversold level (yesterday <= oversold AND today > oversold)
-
-    Exit (while in a trade):
-      • RSI crosses DOWN through the overbought level (yesterday >= overbought AND today < overbought), OR
-      • Take-profit: (Close - entry) / entry >= take_profit, OR
-      • Stop-loss:   (Close - entry) / entry <= -stop_loss
-
-    Returns DataFrame with:
-      Close, RSI, TP_SL_Signal (0/1),
-      Market Return, Strategy Return,
-      Cumulative Market Return, Cumulative Strategy Return
-    """
+    
     df = _download_prices(ticker, start_date, end_date)
     if df.empty:
         return pd.DataFrame()
